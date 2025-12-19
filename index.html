@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Visualizador 360° VR con Teleportación - Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+
+        #crosshair.vr-mode {
+            opacity: 0.3;
+        }
+
+        #gazeProgress {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 101;
+            display: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #gazeProgress.active {
+            display: block;
+            border-top: 3px solid #00ff00;
+            animation: spin 3s linear forwards;
+        }
+
+        #gazeProgress.vr-mode {
+            opacity: 0.8;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @keyframes spinVR {
+            0% { transform: translate(-50%, -50%) scale(1.2) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) scale(1.2) rotate(360deg); }
+        }
+
+        #gazeProgress.vr-mode.active {
+            animation: spinVR 3s linear forwards;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+            transition: all 0.3s ease;
+            max-width: 300px;
+        }
+
+        #info.vr-mode {
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.8);
+            font-size: 16px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        #vrButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            min-width: 100px;
+        }
+
+        #vrButton:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        #vrButton:active {
+            transform: translateY(0);
+        }
+
+        #vrButton.active {
+            background: #28a745;
+        }
+
+        #vrButton.vr-mode {
+            bottom: 50%;
+            right: 50%;
+            transform: translate(50%, 50%);
+            background: #dc3545;
+            font-size: 18px;
+            padding: 20px 30px;
+            border-radius: 15px;
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        #vrButton.vr-mode:hover {
+            background: #c82333;
+            transform: translate(50%, 50%) scale(1.05);
+        }
+
+        /* UI Container para mejor control en VR */
+        #uiContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 99;
+        }
+
+        #uiContainer * {
+            pointer-events: auto;
+        }
+
+        /* Overlay para modo VR */
+        #vrOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 98;
+            pointer-events: none;
+        }
+
+        #vrOverlay.active {
+            display: block;
+        }
+
+        /* Instrucciones VR */
+        #vrInstructions {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 100;
+            display: none;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        #vrInstructions.vr-mode {
+            display: block;
+            font-size: 16px;
+            padding: 15px 25px;
+        }
+
+        /* Responsive para móviles */
+        @media (max-width: 768px) {
+            #vrButton {
+                bottom: 10px;
+                right: 10px;
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+
+            #vrButton.vr-mode {
+                bottom: 40%;
+                right: 50%;
+                transform: translate(50%, 50%);
+                padding: 18px 25px;
+                font-size: 16px;
+            }
+
+            #info {
+                bottom: 10px;
+                left: 10px;
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+
+            #info.vr-mode {
+                bottom: 30px;
+                font-size: 14px;
+                padding: 12px 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="uiContainer">
+        <div id="crosshair"></div>
+        <div id="gazeProgress"></div>
+        <div id="info">Mira un cubo por 3 segundos para teleportarte</div>
+        <div id="vrInstructions">Usa las gafas VR - Mira los cubos verdes para teleportarte</div>
+        <button id="vrButton">VR Mode</button>
+    </div>
+    <div id="vrOverlay"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, sphere;
+        let alpha = 0, beta = 0, gamma = 0;
+        let quaternion = new THREE.Quaternion();
+        let euler = new THREE.Euler();
+        let fov = 75;
+        
+        // Variables para controles de mouse/touch
+        let isMouseDown = false;
+        let mouseX = 0, mouseY = 0;
+        let targetRotationX = 0, targetRotationY = 0;
+        let rotationX = 0, rotationY = 0;
+        let isGyroscopeAvailable = false;
+        let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // Variables para teleportación
+        let teleportCubes = [];
+        let raycaster = new THREE.Raycaster();
+        let gazedCube = null;
+        let gazeStartTime = 0;
+        let gazeProgress;
+        let currentSceneIndex = 0;
+        
+        // Variables VR
+        let vrMode = false;
+        let vrButton;
+        let initialAlpha = null;
+        
+        // Referencias UI
+        let crosshair, info, vrInstructions, vrOverlay, uiContainer;
+        
+        // NUEVO: Crosshair 3D para VR
+        let crosshair3D = null;
+        let gazeProgress3D = null;
+        
+        // SOLO ESTAS VARIABLES NUEVAS PARA ARREGLAR GIROSCOPIO
+        let gyroCalibrated = false;
+        let initialOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        
+        // Definir las 3 escenas/imágenes 360°
+        const scenes = [
+            {
+                image: 'renderFinal.webp',
+                name: 'Escena 1',
+                teleports: [
+                    { position: [-200, 0, 0], target: 1 },
+                    { position: [200, 0, -25], target: 2 }
+                ]
+            },
+            {
+                image: 'renderFinal1.webp',
+                name: 'Escena 2',
+                teleports: [
+                    { position: [0, 0, 150], target: 0 }
+                ]
+            },
+            {
+                image: 'renderFinal2.webp',
+                name: 'Escena 3',
+                teleports: [
+                    { position: [-80, 0, 80], target: 0 }
+                ]
+            }
+        ];
+        
+        function init() {
+            // Obtener referencias de elementos UI
+            gazeProgress = document.getElementById('gazeProgress');
+            crosshair = document.getElementById('crosshair');
+            info = document.getElementById('info');
+            vrInstructions = document.getElementById('vrInstructions');
+            vrOverlay = document.getElementById('vrOverlay');
+            uiContainer = document.getElementById('uiContainer');
+            
+            // Crear escena
+            scene = new THREE.Scene();
+            
+            // Crear cámara
+            camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 0);
+            
+            // MEJORA PARA IMAGEN NÍTIDA: Configurar renderer optimizado para móviles
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: !isMobile, // Sin antialiasing en móviles para mejor performance
+                powerPreference: "high-performance",
+                alpha: false,
+                premultipliedAlpha: false,
+                preserveDrawingBuffer: false
+            });
+            
+            // ARREGLO IMAGEN BORROSA Y LAGASOS: Configurar pixelRatio y rendimiento
+            const pixelRatio = isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2);
+            renderer.setPixelRatio(pixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Crear esfera para la imagen 360 - OPTIMIZADA PARA MÓVILES
+            const segments = isMobile ? 32 : 60; // Menos geometría en móviles
+            const geometry = new THREE.SphereGeometry(500, segments, segments/2);
+            geometry.scale(-1, -1, 1);
+            
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0xffffff,
+                side: THREE.DoubleSide
+            });
+            sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+            
+            // Agregar iluminación ambiental
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            scene.add(ambientLight);
+            
+            // Luz direccional adicional
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, 1, 0);
+            scene.add(directionalLight);
+            
+            // Configurar controles
+            if (isMobile) {
+                setupGyroscope();
+            } else {
+                setupMouseControls();
+            }
+            
+            // Configurar botón VR
+            setupVRButton();
+            
+            // Configurar eventos
+            setupEvents();
+            
+            // Crear raycaster para detección de mirada
+            raycaster = new THREE.Raycaster();
+            
+            // NUEVO: Crear crosshair 3D para VR
+            createCrosshair3D();
+            
+            // Cargar primera escena
+            loadScene(currentSceneIndex);
+            
+            // Iniciar animación
+            animate();
+        }
+        
+        // NUEVO: Crear crosshair 3D visible en VR (más pequeño)
+        function createCrosshair3D() {
+            // Crear geometría de círculo MÁS PEQUEÑA
+            const crosshairGeometry = new THREE.RingGeometry(0.15, 0.25, 16);
+            const crosshairMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
+            crosshair3D = new THREE.Mesh(crosshairGeometry, crosshairMaterial);
+            crosshair3D.position.set(0, 0, -10); // Posicionado frente a la cámara
+            crosshair3D.visible = false; // Inicialmente invisible
+            
+            scene.add(crosshair3D);
+            
+            // NUEVO: Crear indicador de progreso 3D para VR
+            const progressGeometry = new THREE.RingGeometry(0.3, 0.4, 32);
+            const progressMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
+            gazeProgress3D = new THREE.Mesh(progressGeometry, progressMaterial);
+            gazeProgress3D.position.set(0, 0, -10);
+            gazeProgress3D.visible = false;
+            
+            scene.add(gazeProgress3D);
+        }
+        
+        // NUEVO: Actualizar posición del crosshair 3D y progreso
+        function updateCrosshair3D() {
+            if (vrMode) {
+                const direction = new THREE.Vector3(0, 0, -10);
+                direction.applyQuaternion(camera.quaternion);
+                
+                if (crosshair3D) {
+                    crosshair3D.position.copy(direction);
+                    crosshair3D.lookAt(camera.position);
+                }
+                
+                if (gazeProgress3D) {
+                    gazeProgress3D.position.copy(direction);
+                    gazeProgress3D.lookAt(camera.position);
+                    
+                    // Animar rotación del progreso
+                    if (gazeProgress3D.visible) {
+                        gazeProgress3D.rotation.z += 0.05;
+                    }
+                }
+            }
+        }
+        
+        function setupVRButton() {
+            vrButton = document.getElementById('vrButton');
+            vrButton.addEventListener('click', toggleVRMode);
+        }
+        
+        function toggleVRMode() {
+            vrMode = !vrMode;
+            
+            if (vrMode) {
+                vrButton.textContent = 'Salir VR';
+                vrButton.classList.add('active');
+                vrButton.classList.add('vr-mode');
+                enableVRMode();
+            } else {
+                vrButton.textContent = 'VR Mode';
+                vrButton.classList.remove('active');
+                vrButton.classList.remove('vr-mode');
+                disableVRMode();
+            }
+        }
+        
+        function enableVRMode() {
+            renderer.setScissorTest(true);
+            initialAlpha = null;
+            
+            // NUEVO: Activar pantalla completa como F11
+            enterFullscreen();
+            
+            // Activar clases VR en elementos UI
+            crosshair.classList.add('vr-mode');
+            gazeProgress.classList.add('vr-mode');
+            
+            // NUEVO: Mostrar crosshair 3D y ocultar el HTML
+            if (crosshair3D) {
+                crosshair3D.visible = true;
+            }
+            crosshair.style.display = 'none'; // Ocultar crosshair HTML
+            gazeProgress.style.display = 'none'; // Ocultar progreso HTML
+            
+            // QUITADO: No mostrar info ni instrucciones en VR para no interferir
+            info.style.display = 'none';
+            vrInstructions.style.display = 'none';
+            vrButton.style.display = 'none'; // Ocultar botón para no interferir
+            
+            vrOverlay.classList.add('active');
+            
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {
+                    console.log('No se pudo bloquear la orientación');
+                });
+            }
+            
+            // Ocultar cursor del mouse
+            document.body.style.cursor = 'none';
+        }
+        
+        function disableVRMode() {
+            renderer.setScissorTest(false);
+            renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+            
+            // NUEVO: Salir de pantalla completa
+            exitFullscreen();
+            
+            // Remover clases VR
+            crosshair.classList.remove('vr-mode');
+            gazeProgress.classList.remove('vr-mode');
+            
+            // NUEVO: Ocultar crosshair 3D y mostrar el HTML
+            if (crosshair3D) {
+                crosshair3D.visible = false;
+            }
+            if (gazeProgress3D) {
+                gazeProgress3D.visible = false;
+            }
+            crosshair.style.display = 'block'; // Mostrar crosshair HTML
+            gazeProgress.style.display = 'none'; // Restaurar estado inicial
+            
+            // RESTAURAR: Mostrar elementos UI normales
+            info.style.display = 'block';
+            vrInstructions.style.display = 'none'; // Las instrucciones solo en VR
+            vrButton.style.display = 'block';
+            
+            vrOverlay.classList.remove('active');
+            
+            if (screen.orientation && screen.orientation.unlock) {
+                screen.orientation.unlock();
+            }
+            
+            // Restaurar cursor del mouse
+            document.body.style.cursor = 'default';
+        }
+        
+        function createTeleportCubes() {
+            // Limpiar cubos existentes
+            teleportCubes.forEach(cube => {
+                scene.remove(cube);
+            });
+            teleportCubes = [];
+            
+            // Crear nuevos cubos para la escena actual
+            const currentScene = scenes[currentSceneIndex];
+            currentScene.teleports.forEach((teleport, index) => {
+                const geometry = new THREE.BoxGeometry(20, 20, 20);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.7,
+                    emissive: 0x004400
+                });
+                
+                const cube = new THREE.Mesh(geometry, material);
+                cube.position.set(teleport.position[0], teleport.position[1], teleport.position[2]);
+                cube.userData = { 
+                    teleportTarget: teleport.target,
+                    originalColor: 0x00ff00,
+                    index: index
+                };
+                
+                // Agregar animación de rotación
+                cube.rotation.x = Math.random() * Math.PI;
+                cube.rotation.y = Math.random() * Math.PI;
+                
+                scene.add(cube);
+                teleportCubes.push(cube);
+            });
+        }
+        
+        // NUEVO: Funciones para pantalla completa como F11
+        function enterFullscreen() {
+            const element = document.documentElement;
+            
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.webkitRequestFullscreen) { // Safari
+                element.webkitRequestFullscreen();
+            } else if (element.mozRequestFullScreen) { // Firefox
+                element.mozRequestFullScreen();
+            } else if (element.msRequestFullscreen) { // IE/Edge
+                element.msRequestFullscreen();
+            }
+        }
+        
+        function exitFullscreen() {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) { // Safari
+                document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) { // Firefox
+                document.mozCancelFullScreen();
+            } else if (document.msExitFullscreen) { // IE/Edge
+                document.msExitFullscreen();
+            }
+        }
+        
+        // NUEVO: Detectar cuando se sale de pantalla completa y desactivar VR
+        function onFullscreenChange() {
+            const isFullscreen = !!(document.fullscreenElement || 
+                                   document.webkitFullscreenElement || 
+                                   document.mozFullScreenElement || 
+                                   document.msFullscreenElement);
+            
+            if (!isFullscreen && vrMode) {
+                // Si salimos de pantalla completa, desactivar VR
+                toggleVRMode();
+            }
+        }
+        
+        function loadScene(sceneIndex) {
+            const sceneData = scenes[sceneIndex];
+            
+            // Solo actualizar texto si no estamos en VR
+            if (!vrMode) {
+                document.getElementById('info').textContent = `${sceneData.name} - Mira un cubo por 3 segundos para teleportarte`;
+            }
+            
+            const loader = new THREE.TextureLoader();
+            loader.load(sceneData.image, function(texture) {
+                texture.encoding = THREE.sRGBEncoding;
+                texture.flipY = false;
+                
+                // MEJORA PARA IMAGEN NÍTIDA Y SIN LAGASOS: Configuración optimizada
+                texture.generateMipmaps = !isMobile; // Sin mipmaps en móviles
+                texture.minFilter = isMobile ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.format = THREE.RGBFormat; // Menos memoria
+                
+                sphere.material.map = texture;
+                sphere.material.needsUpdate = true;
+                
+                // Crear cubos de teleportación para esta escena
+                createTeleportCubes();
+                
+                console.log(`Escena ${sceneIndex + 1} cargada correctamente`);
+            }, undefined, function(error) {
+                console.error('Error cargando imagen:', error);
+                createBrightTestTexture();
+                createTeleportCubes();
+            });
+        }
+        
+        function checkGaze() {
+            if (teleportCubes.length === 0) return;
+            
+            // ARREGLO VR: Usar posición central de la cámara para el raycaster, no desplazada
+            const cameraPosition = new THREE.Vector3(0, 0, 0); // Siempre desde el centro
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(camera.quaternion);
+            
+            raycaster.set(cameraPosition, direction);
+            
+            // Verificar intersección con cubos
+            const intersects = raycaster.intersectObjects(teleportCubes);
+            
+            if (intersects.length > 0) {
+                const intersectedCube = intersects[0].object;
+                
+                if (gazedCube !== intersectedCube) {
+                    // Nuevo cubo siendo mirado
+                    resetGaze();
+                    gazedCube = intersectedCube;
+                    gazeStartTime = Date.now();
+                    
+                    // Resaltar cubo - con protección
+                    try {
+                        if (intersectedCube && intersectedCube.material) {
+                            intersectedCube.material.color.setHex(0xffff00);
+                            intersectedCube.material.emissive.setHex(0x444400);
+                        }
+                    } catch (e) {
+                        console.warn('Error cambiando color del cubo');
+                    }
+                    
+                    // Mostrar progreso de mirada
+                    if (vrMode && gazeProgress3D) {
+                        gazeProgress3D.visible = true;
+                    } else if (gazeProgress) {
+                        gazeProgress.classList.add('active');
+                    }
+                }
+                
+                // Verificar si se ha mirado por 3 segundos
+                const gazeDuration = Date.now() - gazeStartTime;
+                if (gazeDuration >= 3000) {
+                    teleportTo(intersectedCube.userData.teleportTarget);
+                    resetGaze();
+                }
+            } else {
+                // No se está mirando ningún cubo
+                resetGaze();
+            }
+        }
+        
+        function resetGaze() {
+            try {
+                if (gazedCube && gazedCube.material && gazedCube.userData) {
+                    gazedCube.material.color.setHex(gazedCube.userData.originalColor);
+                    gazedCube.material.emissive.setHex(0x004400);
+                }
+            } catch (e) {
+                console.warn('Error restaurando color del cubo');
+            }
+            
+            gazedCube = null;
+            gazeStartTime = 0;
+            
+            if (vrMode && gazeProgress3D) {
+                gazeProgress3D.visible = false;
+            } else if (gazeProgress) {
+                gazeProgress.classList.remove('active');
+            }
+        }
+        
+        function teleportTo(targetSceneIndex) {
+            if (targetSceneIndex >= 0 && targetSceneIndex < scenes.length) {
+                currentSceneIndex = targetSceneIndex;
+                loadScene(currentSceneIndex);
+                
+                // Efecto de transición (opcional)
+                fadeTransition();
+            }
+        }
+        
+        function fadeTransition() {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'black';
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.5s';
+            overlay.style.zIndex = '1000';
+            overlay.style.pointerEvents = 'none';
+            
+            document.body.appendChild(overlay);
+            
+            setTimeout(() => {
+                overlay.style.opacity = '1';
+                setTimeout(() => {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                        document.body.removeChild(overlay);
+                    }, 500);
+                }, 200);
+            }, 10);
+        }
+        
+        // ARREGLO GIROSCOPIO: Función mejorada y estable
+        function setupGyroscope() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', onDeviceOrientation, false);
+                            isGyroscopeAvailable = true;
+                        } else {
+                            setupTouchControls();
+                        }
+                    })
+                    .catch(() => {
+                        setupTouchControls();
+                    });
+            } else {
+                window.addEventListener('deviceorientation', onDeviceOrientation, false);
+                isGyroscopeAvailable = true;
+            }
+            
+            window.addEventListener('orientationchange', onOrientationChange, false);
+        }
+        
+        function setupMouseControls() {
+            const canvas = renderer.domElement;
+            
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('wheel', onMouseWheel);
+            
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+        
+        function setupTouchControls() {
+            const canvas = renderer.domElement;
+            
+            canvas.addEventListener('touchstart', onTouchStart);
+            canvas.addEventListener('touchmove', onTouchMove);
+            canvas.addEventListener('touchend', onTouchEnd);
+        }
+        
+        // ARREGLO GIROSCOPIO: Función completamente reescrita para estabilidad
+        function onDeviceOrientation(event) {
+            if (!isGyroscopeAvailable) return;
+            
+            const currentAlpha = event.alpha || 0;
+            const currentBeta = event.beta || 0;
+            const currentGamma = event.gamma || 0;
+            
+            // Calibración inicial mejorada
+            if (!gyroCalibrated) {
+                initialOrientation.alpha = currentAlpha;
+                initialOrientation.beta = currentBeta;
+                initialOrientation.gamma = currentGamma;
+                gyroCalibrated = true;
+                return;
+            }
+            
+            // Calcular diferencias desde la calibración inicial
+            let deltaAlpha = currentAlpha - initialOrientation.alpha;
+            let deltaBeta = currentBeta - initialOrientation.beta;
+            
+            // Normalizar el ángulo alpha (horizontal)
+            if (deltaAlpha > 180) deltaAlpha -= 360;
+            if (deltaAlpha < -180) deltaAlpha += 360;
+            
+            // Limitar movimiento vertical
+            deltaBeta = Math.max(-60, Math.min(60, deltaBeta));
+            
+            // Convertir a radianes y aplicar suavizado - ARREGLADO: rotación natural
+            const targetY = THREE.MathUtils.degToRad(deltaAlpha);
+            const targetX = THREE.MathUtils.degToRad(-deltaBeta * 0.7);
+            
+            // Suavizar transiciones para evitar saltos
+            targetRotationY = targetY;
+            targetRotationX = targetX;
+        }
+        
+        function onMouseDown(event) {
+            isMouseDown = true;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+        
+        function onMouseMove(event) {
+            if (!isMouseDown) return;
+            
+            const deltaX = event.clientX - mouseX;
+            const deltaY = event.clientY - mouseY;
+            
+            targetRotationY += deltaX * 0.005;
+            targetRotationX += deltaY * 0.005;
+            
+            targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationX));
+            
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+        
+        function onMouseUp() {
+            isMouseDown = false;
+        }
+        
+        function onMouseWheel(event) {
+            event.preventDefault();
+            
+            fov += event.deltaY * 0.1;
+            fov = Math.max(10, Math.min(120, fov));
+            
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+        }
+        
+        let touchStartX = 0, touchStartY = 0;
+        
+        function onTouchStart(event) {
+            if (event.touches.length === 1) {
+                touchStartX = event.touches[0].clientX;
+                touchStartY = event.touches[0].clientY;
+            }
+        }
+        
+        function onTouchMove(event) {
+            event.preventDefault();
+            
+            if (event.touches.length === 1) {
+                const deltaX = event.touches[0].clientX - touchStartX;
+                const deltaY = event.touches[0].clientY - touchStartY;
+                
+                targetRotationY += deltaX * 0.01;
+                targetRotationX += deltaY * 0.01;
+                
+                targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationX));
+                
+                touchStartX = event.touches[0].clientX;
+                touchStartY = event.touches[0].clientY;
+            }
+        }
+        
+        function onTouchEnd() {
+            // Touch end
+        }
+        
+        // ARREGLO GIROSCOPIO: Recalibración al cambiar orientación
+        function onOrientationChange() {
+            setTimeout(() => {
+                if (window.orientation !== undefined) {
+                    // Recalibrar giroscopio
+                    gyroCalibrated = false;
+                    initialOrientation = { alpha: 0, beta: 0, gamma: 0 };
+                    onWindowResize();
+                }
+            }, 100);
+        }
+        
+        function setupEvents() {
+            window.addEventListener('resize', onWindowResize);
+            
+            // NUEVO: Detectar cambios de pantalla completa
+            document.addEventListener('fullscreenchange', onFullscreenChange);
+            document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+            document.addEventListener('mozfullscreenchange', onFullscreenChange);
+            document.addEventListener('MSFullscreenChange', onFullscreenChange);
+            
+            if (isMobile) {
+                document.addEventListener('touchstart', function(e) {
+                    if (e.touches.length > 1) {
+                        e.preventDefault();
+                    }
+                });
+            }
+        }
+        
+        function createBrightTestTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(0.5, '#98FB98');
+            gradient.addColorStop(1, '#F0E68C');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#000080';
+            ctx.font = 'bold 32px Arial';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3;
+            ctx.strokeText('Carga tu imagen 360°', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('Carga tu imagen 360°', canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            texture.encoding = THREE.sRGBEncoding;
+            
+            sphere.material.map = texture;
+            sphere.material.needsUpdate = true;
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Animar cubos de teleportación
+            teleportCubes.forEach(cube => {
+                if (cube && cube.rotation) {
+                    cube.rotation.x += 0.01;
+                    cube.rotation.y += 0.01;
+                }
+            });
+            
+            // NUEVO: Actualizar crosshair 3D en VR
+            updateCrosshair3D();
+            
+            // IMPORTANTE: Verificar mirada ANTES del renderizado para mantener consistencia
+            checkGaze();
+            
+            // ARREGLO GIROSCOPIO: Aplicar rotaciones MÁS suavemente para evitar lagasos
+            const smoothFactor = isMobile ? 0.05 : 0.1; // Más suave en móviles
+            rotationY += (targetRotationY - rotationY) * smoothFactor;
+            rotationX += (targetRotationX - rotationX) * smoothFactor;
+            camera.rotation.set(0, rotationY, 0);
+            
+            // Renderizado VR o normal
+            if (vrMode) {
+                renderVR();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+        
+        function renderVR() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const eyeWidth = width / 2;
+            
+            // Guardar posición original de la cámara
+            const originalCameraPosition = camera.position.x;
+            
+            // Configurar para ojo izquierdo
+            renderer.setViewport(0, 0, eyeWidth, height);
+            renderer.setScissor(0, 0, eyeWidth, height);
+            camera.position.x = -0.5;
+            renderer.render(scene, camera);
+            
+            // Configurar para ojo derecho
+            renderer.setViewport(eyeWidth, 0, eyeWidth, height);
+            renderer.setScissor(eyeWidth, 0, eyeWidth, height);
+            camera.position.x = 0.5;
+            renderer.render(scene, camera);
+            
+            // IMPORTANTE: Restaurar posición original EXACTA
+            camera.position.x = originalCameraPosition;
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // ARREGLO IMAGEN BORROSA Y LAGASOS: Actualizar pixelRatio optimizado
+            const newPixelRatio = isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2);
+            renderer.setPixelRatio(newPixelRatio);
+        }
+        
+        // Inicializar cuando se cargue la página
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
